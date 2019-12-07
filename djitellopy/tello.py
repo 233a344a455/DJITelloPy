@@ -48,6 +48,11 @@ class Tello:
     is_flying = False
 
     # Tello state
+    mid = -1
+    x = 0
+    y = 0
+    z = 0
+    mpry = 0
     pitch = -1
     roll = -1
     yaw = -1
@@ -113,29 +118,35 @@ class Tello:
 
     def get_states(self):
         """This runs on background to recieve the state of Tello"""
+        self.enable_mission_pads()
         while True:
             try:
                 self.response_state, _ = self.stateSocket.recvfrom(256)
                 if self.response_state != 'ok':
                     self.response_state = self.response_state.decode('ASCII')
                     list = self.response_state.replace(';', ':').split(':')
-                    self.pitch = int(list[1])
-                    self.roll = int(list[3])
-                    self.yaw = int(list[5])
-                    self.speed_x = int(list[7])
-                    self.speed_y = int(list[9])
-                    self.speed_z = int(list[11])
-                    self.temperature_lowest = int(list[13])
-                    self.temperature_highest = int(list[15])
-                    self.distance_tof = int(list[17])
-                    self.height = int(list[19])
-                    self.battery = int(list[21])
-                    self.barometer = float(list[23])
-                    self.flight_time = float(list[25])
-                    self.acceleration_x = float(list[27])
-                    self.acceleration_y = float(list[29])
-                    self.acceleration_z = float(list[31])
-                    self.attitude = {'pitch': int(list[1]), 'roll': int(list[3]), 'yaw': int(list[5])}
+                    self.mid = int(list[1])
+                    self.x = int(list[3])
+                    self.y = int(list[5])
+                    self.z = int(list[7])
+                    self.mpry = list[9]
+                    self.pitch = int(list[11])
+                    self.roll = int(list[13])
+                    self.yaw = int(list[15])
+                    self.speed_x = int(list[17])
+                    self.speed_y = int(list[19])
+                    self.speed_z = int(list[21])
+                    self.temperature_lowest = int(list[23])
+                    self.temperature_highest = int(list[25])
+                    self.distance_tof = int(list[27])
+                    self.height = int(list[29])
+                    self.battery = int(list[31])
+                    self.barometer = float(list[33])
+                    self.flight_time = int(list[35])
+                    self.acceleration_x = float(list[37])
+                    self.acceleration_y = float(list[39])
+                    self.acceleration_z = float(list[41])
+                    self.attitude = {'pitch': int(list[11]), 'roll': int(list[13]), 'yaw': int(list[15])}
             except Exception as e:
                 self.LOGGER.error(e)
                 self.LOGGER.error(f"Response was is {self.response_state}")
@@ -516,7 +527,7 @@ class Tello:
         return self.flip("b")
 
     @accepts(x=int, y=int, z=int, speed=int)
-    def go_xyz_speed(self, x, y, z, speed):
+    def goto(self, x, y, z, speed):
         """Tello fly to x y z in speed (cm/s)
         Arguments:
             x: 20-500
@@ -529,7 +540,7 @@ class Tello:
         return self.send_command_without_return('go %s %s %s %s' % (x, y, z, speed))
 
     @accepts(x1=int, y1=int, z1=int, x2=int, y2=int, z2=int, speed=int)
-    def curve_xyz_speed(self, x1, y1, z1, x2, y2, z2, speed):
+    def curve(self, x1, y1, z1, x2, y2, z2, speed):
         """Tello fly a curve defined by the current and two given coordinates with speed (cm/s).
             - If the arc radius is not within the range of 0.5-10 meters, it responses false.
             - x/y/z can’t be between -20 – 20 at the same time.
@@ -547,7 +558,7 @@ class Tello:
         return self.send_command_without_return('curve %s %s %s %s %s %s %s' % (x1, y1, z1, x2, y2, z2, speed))
 
     @accepts(x=int, y=int, z=int, speed=int, mid=int)
-    def go_xyz_speed_mid(self, x, y, z, speed, mid):
+    def goto_mid(self, x, y, z, speed, mid):
         """Tello fly to x y z in speed (cm/s) relative to mission pad iwth id mid
         Arguments:
             x: -500-500
@@ -561,7 +572,7 @@ class Tello:
         return self.send_control_command('go %s %s %s %s m%s' % (x, y, z, speed, mid))
 
     @accepts(x1=int, y1=int, z1=int, x2=int, y2=int, z2=int, speed=int, mid=int)
-    def curve_xyz_speed_mid(self, x1, y1, z1, x2, y2, z2, speed, mid):
+    def curve_mid(self, x1, y1, z1, x2, y2, z2, speed, mid):
         """Tello fly to x2 y2 z2 over x1 y1 z1 in speed (cm/s) relative to mission pad with id mid
         Arguments:
             x1: -500-500
@@ -578,7 +589,7 @@ class Tello:
         return self.send_control_command('curve %s %s %s %s %s %s %s m%s' % (x1, y1, z1, x2, y2, z2, speed, mid))
 
     @accepts(x=int, y=int, z=int, speed=int, yaw=int, mid1=int, mid2=int)
-    def go_xyz_speed_yaw_mid(self, x, y, z, speed, yaw, mid1, mid2):
+    def goto_yaw_mid(self, x, y, z, speed, yaw, mid1, mid2):
         """Tello fly to x y z in speed (cm/s) relative to mid1
         Then fly to 0 0 z over mid2 and rotate to yaw relative to mid2's rotation
         Arguments:
@@ -683,47 +694,6 @@ class Tello:
         """
         return self.send_read_command('time?')
 
-    def get_height(self):
-        """Get height (cm)
-        Returns:
-            False: Unsuccessful
-            int: 0-3000
-        """
-        return self.send_read_command('height?')
-
-    def get_temperature(self):
-        """Get temperature (°C)
-        Returns:
-            False: Unsuccessful
-            int: 0-90
-        """
-        return self.send_read_command('temp?')
-
-    def get_attitude(self):
-        """Get IMU attitude data
-        Returns:
-            False: Unsuccessful
-            int: pitch roll yaw
-        """
-        r = self.send_read_command('attitude?').replace(';', ':').split(':')
-        return dict(zip(r[::2], [int(i) for i in r[1::2]]))  # {'pitch': xxx, 'roll': xxx, 'yaw': xxx}
-
-    def get_barometer(self):
-        """Get barometer value (m)
-        Returns:
-            False: Unsuccessful
-            int: 0-100
-        """
-        return self.send_read_command('baro?')
-
-    def get_distance_tof(self):
-        """Get distance value from TOF (cm)
-        Returns:
-            False: Unsuccessful
-            int: 30-1000
-        """
-        return self.send_read_command('tof?')
-
     def get_wifi(self):
         """Get Wi-Fi SNR
         Returns:
@@ -778,10 +748,18 @@ class BackgroundFrameRead:
 
         self.grabbed, self.frame = self.cap.read()
         self.stopped = False
+        self.vid_viewer = False
 
     def start(self):
         Thread(target=self.update_frame, args=()).start()
         return self
+    
+    def open_video_viewer(self):
+        self.vid_viewer = True
+    
+    def close_video_viewer(self):
+        self.vid_viewer = False
+        cv2.destroyAllWindows()
 
     def update_frame(self):
         while not self.stopped:
@@ -789,6 +767,9 @@ class BackgroundFrameRead:
                 self.stop()
             else:
                 (self.grabbed, self.frame) = self.cap.read()
+                if self.vid_viewer == True:
+                    cv2.imshow('flame', self.frame)
+                    cv2.waitKey(1)
 
     def stop(self):
         self.stopped = True
