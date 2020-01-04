@@ -147,6 +147,7 @@ class Tello:
                     self.acceleration_y = float(list[39])
                     self.acceleration_z = float(list[41])
                     self.attitude = {'pitch': int(list[11]), 'roll': int(list[13]), 'yaw': int(list[15])}
+                    self.xyz = {'x': self.x, 'y': self.y, 'z': self.z}
             except Exception as e:
                 self.LOGGER.error(e)
                 self.LOGGER.error(f"Response was is {self.response_state}")
@@ -156,11 +157,11 @@ class Tello:
         return 'udp://@' + self.VS_UDP_IP + ':' + str(self.VS_UDP_PORT)  # + '?overrun_nonfatal=1&fifo_size=5000'
 
     def get_video_capture(self):
-        """Get the VideoCapture object from the camera drone
+        """Get the VideoCapture(cv2) object from the camera drone
         Returns:
             VideoCapture
         """
-
+        self.streamon()
         if self.cap is None:
             self.cap = cv2.VideoCapture(self.get_udp_video_address())
 
@@ -175,6 +176,7 @@ class Tello:
         Returns:
             BackgroundFrameRead
         """
+        self.streamon()
         if self.background_frame_read is None:
             self.background_frame_read = BackgroundFrameRead(self, self.get_udp_video_address()).start()
         return self.background_frame_read
@@ -728,6 +730,14 @@ class Tello:
             self.background_frame_read.stop()
         if self.cap is not None:
             self.cap.release()
+    
+    def sleep(self, t):
+        time.sleep(t)
+    
+    def stop(self):
+        self.send_rc_control(0, 0, 0, 0)
+        self.send_control_command("stop")
+        self.end()
 
     def __del__(self):
         self.end()
@@ -740,18 +750,20 @@ class BackgroundFrameRead:
     """
 
     def __init__(self, tello, address):
+        tello.streamon()
         tello.cap = cv2.VideoCapture(address)
         self.cap = tello.cap
 
         if not self.cap.isOpened():
             self.cap.open(address)
 
+        self.tello = tello
         self.grabbed, self.frame = self.cap.read()
         self.stopped = False
         self.vid_viewer = False
 
     def start(self):
-        Thread(target=self.update_frame, args=()).start()
+        Thread(target=self.update, args=()).start()
         return self
     
     def open_video_viewer(self):
@@ -761,15 +773,23 @@ class BackgroundFrameRead:
         self.vid_viewer = False
         cv2.destroyAllWindows()
 
-    def update_frame(self):
+    def update(self):
         while not self.stopped:
             if not self.grabbed or not self.cap.isOpened():
                 self.stop()
             else:
-                (self.grabbed, self.frame) = self.cap.read()
+                self.grabbed, self.frame = self.cap.read()
                 if self.vid_viewer == True:
-                    cv2.imshow('flame', self.frame)
-                    cv2.waitKey(1)
+                    
+                    f = self.frame
+                    cv2.putText(f, ('battery:' + str(self.tello.battery) + ' mid:' + str(self.tello.mid) + str(self.tello.xyz) + str(self.tello.attitude)), (100, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 2, cv2.LINE_AA)
+
+                    cv2.imshow('frame', f)
+                    k = cv2.waitKey(1)
+                    if k == ord('s'):
+                        self.tello.stop()
+                    if k == ord('e'):
+                        self.tello.emergency()
 
     def stop(self):
-        self.stopped = True
+        self.stopped = True    
